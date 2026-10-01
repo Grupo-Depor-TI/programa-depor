@@ -1,0 +1,181 @@
+<!doctype html>
+<html lang="es" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex, nofollow">
+<title>Programa Depor · Instalador</title>
+<meta name="theme-color" content="#eef2fa">
+<link rel="icon" href="favicon.png">
+<link rel="stylesheet" href="css/liquid-glass.css">
+<style>
+  body { min-height: 100vh; margin: 0; }
+  .pagina { max-width: 980px; margin: 0 auto; padding: 48px 20px 64px; }
+  .acceso { min-height: 100vh; display: grid; place-items: center; padding: 20px; }
+  .tarjeta-acceso { width: min(400px, 100%); padding: 34px 28px 28px; border-radius: 30px; text-align: center; }
+  .marca { width: 64px; height: 64px; border-radius: 18px; margin: 0 auto 14px; display: grid; place-items: center;
+    background: linear-gradient(145deg, #3aa0ff, #0a5bd6); box-shadow: 0 12px 26px -12px rgba(0,90,220,.7); }
+  .marca svg { width: 32px; height: 32px; color: #fff; }
+  .tarjeta-acceso h1 { font-size: 26px; margin: 0 0 4px; letter-spacing: -.02em; }
+  .tarjeta-acceso p { color: var(--text-2); margin: 0 0 22px; font-size: 14.5px; }
+  .campo-clave { display: flex; gap: 8px; }
+  .campo-clave input { flex: 1; height: 46px; border: 0; border-radius: 14px; padding: 0 16px; font: inherit; font-size: 16px;
+    background: rgba(255,255,255,.8); box-shadow: inset 0 0 0 .5px var(--sep); outline: none; color: var(--text); }
+  .campo-clave input:focus { box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--blue) 50%, transparent); }
+  .error { color: var(--red); font-size: 13.5px; min-height: 20px; margin-top: 10px; }
+  .agitar { animation: agitar .4s; }
+  @keyframes agitar { 20%, 60% { transform: translateX(-8px); } 40%, 80% { transform: translateX(8px); } }
+
+  .cabecera { display: flex; align-items: center; gap: 14px; margin-bottom: 26px; }
+  .cabecera .marca { margin: 0; width: 52px; height: 52px; border-radius: 15px; }
+  .cabecera .marca svg { width: 26px; height: 26px; }
+  .cabecera h1 { font-size: 34px; margin: 0; letter-spacing: -.02em; line-height: 1.1; }
+  .cabecera .sub { color: var(--text-2); font-size: 15px; margin-top: 2px; }
+  .hero { padding: 26px 28px; border-radius: 30px; display: grid; grid-template-columns: 1fr auto; gap: 18px 24px; align-items: center; }
+  .hero h2 { margin: 0 0 6px; font-size: 22px; }
+  .hero p { margin: 0; color: var(--text-2); font-size: 14.5px; line-height: 1.5; }
+  .descargar { display: inline-flex; align-items: center; gap: 10px; height: 52px; padding: 0 24px; border-radius: 26px; font-size: 16px; font-weight: 600;
+    color: #fff; text-decoration: none; background: linear-gradient(180deg, #2f9bff, #0a6fe8); box-shadow: 0 12px 26px -12px rgba(0,110,240,.8), inset 0 1px 0 rgba(255,255,255,.35);
+    transition: transform .3s var(--ease-spring); white-space: nowrap; }
+  .descargar:hover { transform: translateY(-2px); }
+  .descargar:active { transform: scale(.97); }
+  .descargar svg { width: 20px; height: 20px; }
+  .nota { grid-column: 1 / -1; display: flex; gap: 10px; align-items: flex-start; padding: 12px 14px; border-radius: 16px;
+    background: rgba(255, 196, 0, .14); font-size: 13.5px; line-height: 1.45; }
+  .nota svg { width: 18px; height: 18px; flex: none; color: #b86e00; margin-top: 1px; }
+  h3.seccion { font-size: 20px; margin: 34px 4px 12px; }
+  .pasos { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
+  .paso { padding: 18px; border-radius: 24px; }
+  .paso .n { width: 30px; height: 30px; border-radius: 15px; display: grid; place-items: center; font-weight: 700; color: #fff;
+    background: linear-gradient(145deg, #3aa0ff, #0a5bd6); margin-bottom: 10px; }
+  .paso b { display: block; font-size: 15px; margin-bottom: 4px; }
+  .paso span { color: var(--text-2); font-size: 13.5px; line-height: 1.45; }
+  .dos { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+  .lista { padding: 18px 20px; border-radius: 24px; }
+  .lista h4 { margin: 0 0 10px; font-size: 15px; display: flex; align-items: center; gap: 8px; }
+  .lista h4 .pill { height: 22px; padding: 0 9px; border-radius: 11px; font-size: 11.5px; font-weight: 600; display: inline-flex; align-items: center; }
+  .pill.verde { background: rgba(31,157,76,.14); color: #16733a; }
+  .pill.gris { background: rgba(60,60,67,.1); color: var(--text-2); }
+  .lista ul { margin: 0; padding-left: 18px; color: var(--text-2); font-size: 14px; line-height: 1.7; }
+  .pie { margin-top: 40px; text-align: center; color: var(--text-3); font-size: 12.5px; }
+  .salir { background: none; border: 0; color: var(--blue); font: inherit; font-size: 12.5px; cursor: pointer; }
+  [hidden] { display: none !important; }
+  @media (max-width: 760px) {
+    .hero { grid-template-columns: 1fr; }
+    .pasos, .dos { grid-template-columns: 1fr; }
+    .cabecera h1 { font-size: 28px; }
+  }
+</style>
+</head>
+<body>
+<div class="wallpaper" aria-hidden="true"><span class="blob b1"></span><span class="blob b2"></span><span class="blob b3"></span><span class="blob b4"></span></div>
+
+<!-- Acceso con clave (solo oculta la página: el .exe se publica en GitHub) -->
+<section class="acceso" id="acceso">
+  <form class="tarjeta-acceso glass" id="form-clave" autocomplete="off">
+    <div class="marca"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2.5"/><path d="M8 21h8M12 17v4"/></svg></div>
+    <h1>Programa Depor</h1>
+    <p>Instalador de programas para PC y TPV de tienda</p>
+    <div class="campo-clave">
+      <input type="password" id="clave" placeholder="Clave de acceso" aria-label="Clave de acceso" autofocus>
+      <button class="btn-glass btn-tinted" type="submit">Entrar</button>
+    </div>
+    <div class="error" id="error" role="alert"></div>
+  </form>
+</section>
+
+<main class="pagina" id="contenido" hidden>
+  <header class="cabecera">
+    <div class="marca"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2.5"/><path d="M8 21h8M12 17v4"/></svg></div>
+    <div><h1>Programa Depor</h1><div class="sub">Instalador de programas para dejar listo un PC nuevo o un TPV de tienda</div></div>
+  </header>
+
+  <section class="hero glass">
+    <div>
+      <h2>Descarga el instalador</h2>
+      <p>Un solo archivo para Windows 10 y 11. Ábrelo en el PC que vas a preparar y elige qué instalar.</p>
+    </div>
+    <a class="descargar" id="link-descarga" href="https://github.com/Grupo-Depor-TI/programa-depor/releases/latest/download/ProgramasV3.exe">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
+      Descargar ProgramasV3.exe
+    </a>
+    <div class="nota">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0zM12 9v4M12 17h.01"/></svg>
+      <span>Windows puede mostrar «Windows protegió su PC» porque el programa no está firmado: pulsa <b>Más información</b> y luego <b>Ejecutar de todas formas</b>. Después pedirá permisos de administrador; acéptalos.</span>
+    </div>
+  </section>
+
+  <h3 class="seccion">Cómo se usa</h3>
+  <div class="pasos">
+    <div class="paso glass"><div class="n">1</div><b>Descarga</b><span>Baja ProgramasV3.exe en el PC que vas a preparar.</span></div>
+    <div class="paso glass"><div class="n">2</div><b>Ábrelo como administrador</b><span>Acepta el aviso de permisos de Windows.</span></div>
+    <div class="paso glass"><div class="n">3</div><b>Elige qué instalar</b><span>Cada botón descarga y abre el instalador, o aplica la configuración.</span></div>
+  </div>
+
+  <h3 class="seccion">Qué se puede hacer</h3>
+  <div class="dos">
+    <div class="lista glass">
+      <h4>Solo con internet <span class="pill verde">Desde cualquier PC</span></h4>
+      <ul>
+        <li>Google Chrome, Google Drive</li>
+        <li>AnyDesk y TeamViewer</li>
+        <li>7-Zip y WinRAR</li>
+        <li>FortiClient VPN</li>
+        <li>Fotos de Microsoft (desde Microsoft Store)</li>
+        <li>Exclusión de Defender, administradores, limpieza, inventario en CSV y reinicio nocturno</li>
+      </ul>
+    </div>
+    <div class="lista glass">
+      <h4>Con el pendrive <span class="pill gris">Carpeta «Programas»</span></h4>
+      <ul>
+        <li>Pasos del Punto de Venta (TPV, SQL, Crystal, reportes, Transbank, Staff)</li>
+        <li>Impresoras de oficina, HP, Epson y Bixolon</li>
+        <li>Agentes de inventario, Zabbix y GLPI</li>
+        <li>Office, macros de Excel, drivers y configuración de Windows</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="pie">Grupo Depor TI · <button class="salir" id="salir" type="button">Cerrar sesión</button></div>
+</main>
+
+<script>
+  'use strict';
+  // Hash SHA-256 de la clave (con prefijo). La clave no está escrita en la página.
+  const HASH = '2823c72bf2b4b9899c0eee4d6687bb7b49f81543d33a82d67ed63ee06bbf3bfa';
+  const LLAVE = 'programa-depor-ok';
+
+  async function sha256(texto) {
+    const datos = new TextEncoder().encode(texto);
+    const hash = await crypto.subtle.digest('SHA-256', datos);
+    return [...new Uint8Array(hash)].map(b => b.toString(16).padStart(2, '0')).join('');
+  }
+  function mostrar(ok) {
+    document.getElementById('acceso').hidden = ok;
+    document.getElementById('contenido').hidden = !ok;
+  }
+  let guardado = null;
+  try { guardado = sessionStorage.getItem(LLAVE); } catch { /* navegador sin almacenamiento */ }
+  mostrar(guardado === HASH);
+
+  document.getElementById('form-clave').addEventListener('submit', async e => {
+    e.preventDefault();
+    const input = document.getElementById('clave');
+    const h = await sha256('programa-depor:' + input.value);
+    if (h === HASH) {
+      try { sessionStorage.setItem(LLAVE, h); } catch { /* */ }
+      mostrar(true);
+    } else {
+      document.getElementById('error').textContent = 'Clave incorrecta';
+      const f = e.currentTarget; f.classList.remove('agitar'); void f.offsetWidth; f.classList.add('agitar');
+      input.select();
+    }
+  });
+  document.getElementById('salir').addEventListener('click', () => {
+    try { sessionStorage.removeItem(LLAVE); } catch { /* */ }
+    document.getElementById('clave').value = ''; document.getElementById('error').textContent = '';
+    mostrar(false);
+  });
+</script>
+</body>
+</html>
