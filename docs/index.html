@@ -33,6 +33,15 @@
   .cabecera .sub { color: var(--text-2); font-size: 15px; margin-top: 2px; }
   .hero { padding: 26px 28px; border-radius: 30px; display: grid; grid-template-columns: 1fr auto; gap: 18px 24px; align-items: center; }
   .hero h2 { margin: 0 0 6px; font-size: 22px; }
+  .hero + .hero { margin-top: 14px; }
+  .recomendado { grid-template-columns: 1fr; }
+  .r-tit .pill { margin-bottom: 8px; }
+  .comando { display: flex; align-items: center; gap: 10px; padding: 8px 8px 8px 16px; border-radius: 16px; background: #1c2333; }
+  .comando code { flex: 1; min-width: 0; color: #e6edf3; font: 14px "Cascadia Mono", Consolas, monospace; overflow-x: auto; white-space: nowrap; padding: 6px 0; }
+  .copiar { display: inline-flex; align-items: center; gap: 6px; height: 38px; padding: 0 14px; border: 0; border-radius: 12px; cursor: pointer;
+    background: rgba(255,255,255,.14); color: #fff; font: inherit; font-size: 14px; font-weight: 600; }
+  .copiar:hover { background: rgba(255,255,255,.24); }
+  .copiar svg { width: 16px; height: 16px; }
   .hero p { margin: 0; color: var(--text-2); font-size: 14.5px; line-height: 1.5; }
   .descargar { display: inline-flex; align-items: center; gap: 10px; height: 52px; padding: 0 24px; border-radius: 26px; font-size: 16px; font-weight: 600;
     color: #fff; text-decoration: none; background: linear-gradient(180deg, #2f9bff, #0a6fe8); box-shadow: 0 12px 26px -12px rgba(0,110,240,.8), inset 0 1px 0 rgba(255,255,255,.35);
@@ -53,7 +62,7 @@
   .dos { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
   .lista { padding: 18px 20px; border-radius: 24px; }
   .lista h4 { margin: 0 0 10px; font-size: 15px; display: flex; align-items: center; gap: 8px; }
-  .lista h4 .pill { height: 22px; padding: 0 9px; border-radius: 11px; font-size: 11.5px; font-weight: 600; display: inline-flex; align-items: center; }
+  .pill { height: 22px; padding: 0 9px; border-radius: 11px; font-size: 11.5px; font-weight: 600; display: inline-flex; align-items: center; }
   .pill.verde { background: rgba(31,157,76,.14); color: #16733a; }
   .pill.gris { background: rgba(60,60,67,.1); color: var(--text-2); }
   .lista ul { margin: 0; padding-left: 18px; color: var(--text-2); font-size: 14px; line-height: 1.7; }
@@ -90,9 +99,17 @@
     <div><h1>Programa Depor</h1><div class="sub">Instalador de programas para dejar listo un PC nuevo o un TPV de tienda</div></div>
   </header>
 
+  <section class="hero glass recomendado">
+    <div class="r-tit"><span class="pill verde">Recomendado</span><h2>Instalar sin avisos de Windows</h2>
+      <p>En el PC que vas a preparar abre <b>PowerShell</b> (clic derecho en Inicio → <b>Terminal</b>), pega este comando y presiona Enter.
+        Descarga el programa a <b>C:\apps</b> y lo abre sin el aviso «Windows protegió su PC».</p></div>
+    <div class="comando"><code id="comando">irm https://grupo-depor-ti.github.io/programa-depor/instalar.ps1 | iex</code>
+      <button class="copiar" id="copiar" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg><span>Copiar</span></button></div>
+  </section>
+
   <section class="hero glass">
     <div>
-      <h2>Descarga el instalador</h2>
+      <h2>O descarga el archivo</h2>
       <p>Un solo archivo para Windows 10 y 11. Ábrelo en el PC que vas a preparar y elige qué instalar.</p>
     </div>
     <a class="descargar" id="link-descarga" href="https://github.com/Grupo-Depor-TI/programa-depor/releases/latest/download/ProgramasV3.exe">
@@ -109,29 +126,27 @@
   <div class="pasos">
     <div class="paso glass"><div class="n">1</div><b>Descarga</b><span>Baja ProgramasV3.exe en el PC que vas a preparar.</span></div>
     <div class="paso glass"><div class="n">2</div><b>Ábrelo como administrador</b><span>Acepta el aviso de permisos de Windows.</span></div>
-    <div class="paso glass"><div class="n">3</div><b>Elige qué instalar</b><span>Cada botón descarga y abre el instalador, o aplica la configuración.</span></div>
+    <div class="paso glass"><div class="n">3</div><b>Elige qué instalar</b><span>Cada botón baja su instalador a C:\apps\Programas y lo abre. La primera vez pide la clave de esta página.</span></div>
   </div>
 
   <h3 class="seccion">Qué se puede hacer</h3>
   <div class="dos">
     <div class="lista glass">
-      <h4>Solo con internet <span class="pill verde">Desde cualquier PC</span></h4>
+      <h4>Con internet <span class="pill verde">Desde cualquier PC</span></h4>
       <ul>
-        <li>Google Chrome, Google Drive</li>
-        <li>AnyDesk y TeamViewer</li>
-        <li>7-Zip y WinRAR</li>
-        <li>FortiClient VPN</li>
-        <li>Fotos de Microsoft (desde Microsoft Store)</li>
-        <li>Exclusión de Defender, administradores, limpieza, inventario en CSV y reinicio nocturno</li>
+        <li>Chrome, Drive, AnyDesk, TeamViewer, 7-Zip, WinRAR y FortiClient (desde el sitio oficial)</li>
+        <li>Pasos del Punto de Venta (TPV, SQL, Crystal, reportes, Transbank, Staff)</li>
+        <li>Impresoras de oficina, HP, Epson y Bixolon</li>
+        <li>Agentes de inventario, Zabbix, GLPI y SQL Backup Master</li>
+        <li>Macros de Excel, drivers y configuración de Windows</li>
       </ul>
     </div>
     <div class="lista glass">
-      <h4>Con el pendrive <span class="pill gris">Carpeta «Programas»</span></h4>
+      <h4>Solo con el pendrive <span class="pill gris">Carpeta «Programas»</span></h4>
       <ul>
-        <li>Pasos del Punto de Venta (TPV, SQL, Crystal, reportes, Transbank, Staff)</li>
-        <li>Impresoras de oficina, HP, Epson y Bixolon</li>
-        <li>Agentes de inventario, Zabbix y GLPI</li>
-        <li>Office, macros de Excel, drivers y configuración de Windows</li>
+        <li>Microsoft Office</li>
+        <li>Activación de Windows y Office</li>
+        <li>Licencia de WinRAR</li>
       </ul>
     </div>
   </div>
@@ -170,6 +185,12 @@
       const f = e.currentTarget; f.classList.remove('agitar'); void f.offsetWidth; f.classList.add('agitar');
       input.select();
     }
+  });
+  document.getElementById('copiar').addEventListener('click', async () => {
+    const texto = document.getElementById('comando').textContent, etiqueta = document.querySelector('#copiar span');
+    try { await navigator.clipboard.writeText(texto); etiqueta.textContent = 'Copiado'; }
+    catch { const r = document.createRange(); r.selectNodeContents(document.getElementById('comando')); const sel = getSelection(); sel.removeAllRanges(); sel.addRange(r); etiqueta.textContent = 'Ctrl+C'; }
+    setTimeout(() => { etiqueta.textContent = 'Copiar'; }, 2000);
   });
   document.getElementById('salir').addEventListener('click', () => {
     try { sessionStorage.removeItem(LLAVE); } catch { /* */ }

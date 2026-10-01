@@ -4,3 +4,8 @@ dist/
 *.spec
 __pycache__/
 *.pyc
+
+# Van dentro del .exe pero no se publican (lista de instaladores y permiso cifrado)
+app/catalogo_instaladores.json
+app/acceso_instaladores.json
+*.token

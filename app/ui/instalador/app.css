@@ -78,3 +78,4 @@
 .tarjeta.sin-red:hover { transform: none; box-shadow: var(--glass-shadow); }
 .opcion.sin-red { opacity: .55; cursor: default; }
 .opcion.sin-red:hover { background: transparent; }
+.clave-error { color: var(--red); font-size: 13.5px; min-height: 18px; margin: 4px 6px 0; }

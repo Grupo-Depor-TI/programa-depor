@@ -60,7 +60,9 @@ function render() {
           : `<button class="btn-plain" data-action="elegir-carpeta">${icon('folder')}Usar el pendrive</button>`}
       </div></div>
     ${d.pendrive ? '' : `<div class="modo-web glass"><span class="logo" style="background:${grad('#0a84ff')}">${icon('cloud')}</span>
-      <div><b>Sin pendrive</b><small>Funcionan los programas que se descargan de su sitio oficial (Chrome, AnyDesk, TeamViewer, Drive, 7-Zip, WinRAR, FortiClient) y las herramientas de Windows. Para el resto conecta el pendrive y elige su carpeta «Programas».</small></div></div>`}
+      <div><b>Sin pendrive</b><small>${d.remoto
+        ? 'Cada programa se descarga a C:\\apps\\Programas la primera vez que lo uses; la primera descarga pide la clave de la web. Office y la activación necesitan el pendrive.'
+        : 'Funcionan los programas que se descargan de su sitio oficial (Chrome, AnyDesk, TeamViewer, Drive, 7-Zip, WinRAR, FortiClient) y las herramientas de Windows. Para el resto conecta el pendrive y elige su carpeta «Programas».'}</small></div></div>`}
     ${generales ? `<label class="buscador glass">${icon('search')}<input id="buscar" type="search" placeholder="Buscar programa…" value="${esc(S.filtro)}" autocomplete="off" spellcheck="false" aria-label="Buscar programa"></label>` : ''}
     <div class="grilla ${generales ? '' : 'pasos'}" id="grilla">${generales ? tarjetasGenerales() : tarjetasTpv()}</div>
   </div>`;
@@ -71,7 +73,8 @@ const ALIAS_ID = id => ({ defender: 'defender_custom' })[id] || id;
 function disponible(id) {
   if (S.d.pendrive) return true;
   const m = S.d.submenus[id];
-  return m ? m.opciones.some(o => disponible(o.id)) : S.d.en_linea.includes(ALIAS_ID(id));
+  if (m) return m.opciones.some(o => disponible(o.id));
+  return S.d.remoto ? !S.d.solo_pendrive.includes(ALIAS_ID(id)) : S.d.en_linea.includes(ALIAS_ID(id));
 }
 
 function tarjeta(t, extra = '') {
@@ -118,7 +121,20 @@ function ejecutar(id) {
 
 /* ───────────── Avisos de procesos ───────────── */
 const ICONO_EST = { ok: 'check', error: 'x', aviso: 'warn' };
+function pedirClave(fid) {
+  openSheet({ title: 'Clave de acceso', small: true, body: `
+    <p class="sheet-text">Para descargar los instaladores ingresa la clave de la página web. Se pide una sola vez en este PC.</p>
+    <div class="form-group">${field('Clave', '<input type="password" name="clave" autocomplete="off">')}</div>
+    <p class="clave-error" id="clave-error" role="alert"></p>`,
+    onConfirm: async () => {
+      const clave = readForm($('.sheet')).clave;
+      if (await api.desbloquear(clave)) { closeSheet(); toast('Clave aceptada'); const r = await api.ejecutar(fid); if (!r.ok) toast(r.error); }
+      else { $('#clave-error').textContent = 'Clave incorrecta'; $('.sheet input[name=clave]').select(); }
+    } });
+}
+
 window.onProceso = p => {
+  if (p.estado === 'clave') { $(`.proceso[data-id="${p.id}"]`)?.remove(); S.procesos.delete(p.id); pedirClave(p.fid); return; }
   const pr = S.procesos.get(p.id) || {};
   Object.assign(pr, p, { texto: p.texto, detalle: p.detalle ?? pr.detalle });
   S.procesos.set(p.id, pr);

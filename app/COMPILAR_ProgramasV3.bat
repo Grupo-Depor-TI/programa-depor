@@ -52,7 +52,12 @@ echo.
 :: Desde la version 4.0 la interfaz es pywebview: la carpeta ui\ (HTML/CSS/JS)
 :: va DENTRO del exe y depor_ui\ se incluye sola porque el .pyw la importa.
 :: Requisitos: pip install pywebview rarfile pyinstaller
-pyinstaller --noconfirm --onefile --windowed --icon="%ICONO%" --uac-admin --add-data="%ICONO%;." --add-data="%~dp0ui;ui" --exclude-module tkinter --exclude-module PyQt6 --exclude-module PyQt5 --exclude-module PySide6 --exclude-module qtpy --exclude-module setuptools --exclude-module numpy "%SCRIPT%"
+:: Catalogo y permiso de los instaladores (no estan en el repositorio publico; ver herramientas\).
+:: Sin ellos el programa compila igual, pero sin pendrive solo baja los gratuitos.
+set EXTRA=
+if exist "%~dp0catalogo_instaladores.json" set EXTRA=%EXTRA% --add-data="%~dp0catalogo_instaladores.json;."
+if exist "%~dp0acceso_instaladores.json" set EXTRA=%EXTRA% --add-data="%~dp0acceso_instaladores.json;."
+pyinstaller --noconfirm --onefile --windowed --icon="%ICONO%" --uac-admin --add-data="%ICONO%;." --add-data="%~dp0ui;ui" %EXTRA% --exclude-module tkinter --exclude-module PyQt6 --exclude-module PyQt5 --exclude-module PySide6 --exclude-module qtpy --exclude-module setuptools --exclude-module numpy "%SCRIPT%"
 
 echo.
 

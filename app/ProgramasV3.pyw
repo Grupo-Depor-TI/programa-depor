@@ -24,6 +24,9 @@ import socket
 import time
 import inspect
 import json
+import hmac
+import hashlib
+import zipfile
 import traceback
 
 # Los mensajes de depuracion llevan emojis. Compilado (--windowed) la salida usa cp1252 y un
@@ -90,10 +93,13 @@ def carpeta_raiz_proyecto():
 # ===============================================
 # 🌐 MODO SIN PENDRIVE (el .exe descargado desde la web)
 # ===============================================
-# Sin la carpeta "Programas" al lado, el programa guarda su log, su config y lo
-# que descarga en ProgramData, y solo funcionan los botones que bajan el
-# instalador del sitio oficial del fabricante.
+# Sin la carpeta "Programas" al lado (exe bajado de la web), los instaladores se
+# descargan a C:\apps\Programas con la misma estructura del pendrive: los
+# gratuitos desde el sitio oficial y el resto desde el repositorio privado de la
+# empresa (pide la clave de la web una vez por PC). Log y config van a ProgramData.
 CARPETA_DATOS_WEB = os.path.join(os.environ.get("ProgramData", r"C:\ProgramData"), "DeporInstalador")
+RAIZ_APPS = r"C:\apps"
+CACHE_PROGRAMAS = os.path.join(RAIZ_APPS, "Programas")
 
 # nombre que busca el programa -> (URL oficial, nombre con que se guarda)
 DESCARGAS_OFICIALES = {
@@ -108,8 +114,11 @@ DESCARGAS_OFICIALES = {
 
 
 def hay_pendrive():
-    """¿Está la carpeta "Programas" junto al programa?"""
-    return os.path.isdir(os.path.join(carpeta_raiz_proyecto(), "Programas"))
+    """¿Está la carpeta "Programas" del pendrive junto al programa? (la de C:/apps son descargas, no pendrive)"""
+    raiz = carpeta_raiz_proyecto()
+    if os.path.normcase(os.path.abspath(raiz)) == os.path.normcase(RAIZ_APPS):
+        return False
+    return os.path.isdir(os.path.join(raiz, "Programas"))
 
 
 def carpeta_datos():
@@ -126,7 +135,7 @@ def descargar_oficial(nombre, avisar=None):
     if not entrada:
         return None
     url, archivo = entrada
-    carpeta = os.path.join(CARPETA_DATOS_WEB, "Descargas")
+    carpeta = os.path.join(RAIZ_APPS, "Descargas")
     os.makedirs(carpeta, exist_ok=True)
     destino = os.path.join(carpeta, archivo)
     temporal = destino + ".parcial"
@@ -159,6 +168,248 @@ def descargar_oficial(nombre, avisar=None):
     return destino
 
 
+class ClaveRequerida(Exception):
+    """Falta la clave para bajar instaladores del repositorio privado.
+
+    Varias funciones del gestor vuelven a lanzar los errores como Exception con
+    otro texto; por eso la interfaz la reconoce por la marca CLAVE_REQUERIDA.
+    """
+    MARCA = "CLAVE_REQUERIDA"
+
+    def __init__(self):
+        super().__init__(f"{self.MARCA}: falta la clave de acceso")
+
+
+def _flujo(clave, nonce, largo):
+    salida, i = b"", 0
+    while len(salida) < largo:
+        salida += hashlib.sha256(clave + nonce + i.to_bytes(4, "big")).digest()
+        i += 1
+    return salida[:largo]
+
+
+def descifrar_acceso(datos, clave_web):
+    """El permiso de solo lectura va cifrado con la clave de la web (PBKDF2 + HMAC). None si la clave no sirve."""
+    llave = hashlib.pbkdf2_hmac("sha256", clave_web.encode("utf-8"), bytes.fromhex(datos["sal"]), datos["iter"], 64)
+    nonce, cifrado = bytes.fromhex(datos["nonce"]), bytes.fromhex(datos["cifrado"])
+    if not hmac.compare_digest(hmac.new(llave[32:], nonce + cifrado, "sha256").hexdigest(), datos["firma"]):
+        return None
+    return bytes(a ^ b for a, b in zip(cifrado, _flujo(llave[:32], nonce, len(cifrado)))).decode("utf-8")
+
+
+class _BLOB(ctypes.Structure):
+    _fields_ = [("cbData", ctypes.c_uint32), ("pbData", ctypes.POINTER(ctypes.c_char))]
+
+
+def _dpapi(datos, proteger):
+    """Guardar el permiso en el PC protegido por Windows (DPAPI): solo este usuario de este equipo lo lee."""
+    entrada = _BLOB(len(datos), ctypes.cast(ctypes.create_string_buffer(datos, len(datos)), ctypes.POINTER(ctypes.c_char)))
+    salida = _BLOB()
+    funcion = ctypes.windll.crypt32.CryptProtectData if proteger else ctypes.windll.crypt32.CryptUnprotectData
+    if not funcion(ctypes.byref(entrada), None, None, None, None, 0, ctypes.byref(salida)):
+        raise OSError("DPAPI")
+    try:
+        return ctypes.string_at(salida.pbData, salida.cbData)
+    finally:
+        ctypes.windll.kernel32.LocalFree(salida.pbData)
+
+
+class Acceso:
+    """Permiso de lectura del repositorio privado de instaladores."""
+
+    ARCHIVO = os.path.join(CARPETA_DATOS_WEB, "acceso.dat")
+
+    def __init__(self):
+        self._token = None
+        self._datos = None
+        try:
+            with open(resource_path("acceso_instaladores.json"), encoding="utf-8") as f:
+                self._datos = json.load(f)
+        except OSError:
+            pass
+
+    def disponible(self):
+        return self._datos is not None
+
+    def token(self):
+        if self._token:
+            return self._token
+        try:
+            with open(self.ARCHIVO, "rb") as f:
+                self._token = _dpapi(f.read(), False).decode("utf-8")
+                return self._token
+        except Exception:
+            raise ClaveRequerida()
+
+    def desbloquear(self, clave_web):
+        if not self._datos:
+            return False
+        token = descifrar_acceso(self._datos, clave_web)
+        if not token:
+            return False
+        self._token = token
+        try:
+            os.makedirs(CARPETA_DATOS_WEB, exist_ok=True)
+            with open(self.ARCHIVO, "wb") as f:
+                f.write(_dpapi(token.encode("utf-8"), True))
+        except Exception as e:
+            print(f"⚠️ [ACCESO] No se pudo recordar la clave: {e}")
+        return True
+
+    def olvidar(self):
+        self._token = None
+        try:
+            os.remove(self.ARCHIVO)
+        except OSError:
+            pass
+
+
+class _SinRedireccion(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, *args, **kwargs):
+        return None
+
+
+class Remoto:
+    """Instaladores del repositorio privado, descritos en catalogo_instaladores.json (va dentro del .exe)."""
+
+    def __init__(self, raiz, catalogo, acceso):
+        self.raiz = raiz
+        self.repo, self.tag = catalogo["repo"], catalogo["tag"]
+        self.paquetes = catalogo["paquetes"]
+        self.acceso = acceso
+        self._ids = None
+        self._lock = threading.Lock()
+
+    def _rel(self, ruta):
+        rel = os.path.relpath(os.path.abspath(ruta), os.path.abspath(self.raiz)).replace("\\", "/")
+        return "" if rel == "." else rel
+
+    def coincidencias(self, nombre, base=None):
+        """Paquetes que traen el archivo o la carpeta «nombre» (buscado igual que resolver_ruta)."""
+        rel_base = self._rel(base) if base else ""
+        if rel_base.startswith(".."):
+            return []
+        partes = [p.lower() for p in nombre.replace("\\", "/").split("/") if p]
+        if not partes:
+            return []
+        objetivo = "/".join(partes)
+        carpetas, archivos = [], []      # (profundidad, paquete)
+        for paq in self.paquetes:
+            for f in paq["archivos"]:
+                fl = f.lower()
+                if rel_base:
+                    if not fl.startswith(rel_base.lower() + "/"):
+                        continue
+                    fl = fl[len(rel_base) + 1:]
+                comps = fl.split("/")
+                if partes[0] in comps:
+                    resto = "/".join(comps[comps.index(partes[0]):])
+                    if resto == objetivo:
+                        archivos.append((len(comps), paq))
+                        break
+                    if resto.startswith(objetivo + "/"):
+                        carpetas.append((len(comps), paq))
+                        break
+        if archivos:
+            # Un archivo: igual que resolver_ruta, gana el que está menos profundo (solo se baja ese paquete)
+            return [min(archivos, key=lambda x: x[0])[1]]
+        return [paq for _, paq in carpetas]
+
+    def ruta_carpeta(self, sufijo):
+        """Ruta local donde quedaría una carpeta del catálogo (sin descargar nada)."""
+        suf = sufijo.replace("\\", "/").lower().strip("/")
+        for paq in self.paquetes:
+            for f in paq["archivos"]:
+                i = f.lower().find(suf + "/")
+                if i == 0 or (i > 0 and f[i - 1] == "/"):
+                    return os.path.join(self.raiz, *f[:i + len(suf)].split("/"))
+        return None
+
+    def _id_asset(self, nombre, token):
+        if self._ids is None:
+            req = urllib.request.Request(f"https://api.github.com/repos/{self.repo}/releases/tags/{self.tag}",
+                                         headers={"Authorization": f"Bearer {token}", "Accept": "application/vnd.github+json"})
+            try:
+                with urllib.request.urlopen(req, timeout=60) as r:
+                    self._ids = {a["name"]: a["id"] for a in json.load(r)["assets"]}
+            except urllib.error.HTTPError as e:
+                if e.code in (401, 403, 404):
+                    self.acceso.olvidar()
+                    raise Exception("El permiso para descargar los instaladores no es válido o venció. "
+                                    "Hay que renovarlo y publicar una versión nueva del programa.")
+                raise
+        return self._ids.get(nombre)
+
+    def asegurar(self, paquetes, avisar=None):
+        avisar = avisar or (lambda m: None)
+        with self._lock:
+            for paq in paquetes:
+                if all(os.path.exists(os.path.join(self.raiz, *f.split("/"))) for f in paq["archivos"]):
+                    continue
+                self._bajar(paq, avisar)
+
+    def _bajar(self, paq, avisar):
+        token = self.acceso.token()          # ClaveRequerida si todavía no se ingresó la clave
+        id_asset = self._id_asset(paq["asset"], token)
+        if not id_asset:
+            raise Exception(f"El instalador «{paq['destino']}» no está en el repositorio de instaladores.")
+        nombre = paq["destino"].split("/")[-1]
+        carpeta_tmp = os.path.join(self.raiz, ".descargas")
+        os.makedirs(carpeta_tmp, exist_ok=True)
+        tmp = os.path.join(carpeta_tmp, paq["asset"] + ".parcial")
+        # GitHub responde con una redirección a un enlace firmado: se sigue SIN el token
+        abridor = urllib.request.build_opener(_SinRedireccion)
+        req = urllib.request.Request(f"https://api.github.com/repos/{self.repo}/releases/assets/{id_asset}",
+                                     headers={"Authorization": f"Bearer {token}", "Accept": "application/octet-stream"})
+        try:
+            abridor.open(req, timeout=60)
+            raise Exception("GitHub no entregó el enlace de descarga")
+        except urllib.error.HTTPError as e:
+            if e.code not in (301, 302, 303, 307, 308):
+                raise Exception(f"No se pudo descargar «{nombre}» (HTTP {e.code})")
+            url = e.headers["Location"]
+        avisar(f"Descargando {nombre}...")
+        try:
+            with urllib.request.urlopen(url, timeout=120) as r, open(tmp, "wb") as f:
+                total, bajado, ultimo = paq["bytes"] or 1, 0, -1
+                while True:
+                    bloque = r.read(1024 * 512)
+                    if not bloque:
+                        break
+                    f.write(bloque)
+                    bajado += len(bloque)
+                    pct = min(100, bajado * 100 // total)
+                    if pct // 2 != ultimo:
+                        ultimo = pct // 2
+                        avisar(f"Descargando {nombre}... {pct}% ({bajado / 1048576:,.0f} de {total / 1048576:,.0f} MB)")
+            if os.path.getsize(tmp) != paq["bytes"]:
+                raise Exception("la descarga quedó incompleta")
+            destino = os.path.join(self.raiz, *paq["destino"].split("/"))
+            if paq["tipo"] == "zip":
+                avisar(f"Descomprimiendo {nombre}...")
+                with zipfile.ZipFile(tmp) as z:
+                    z.extractall(destino)
+                os.remove(tmp)
+            else:
+                os.makedirs(os.path.dirname(destino), exist_ok=True)
+                os.replace(tmp, destino)
+        except Exception as e:
+            try:
+                os.remove(tmp)
+            except OSError:
+                pass
+            raise Exception(f"No se pudo descargar «{nombre}»: {e}. Revisa la conexión a internet.")
+        print(f"🌐 [REMOTO] {paq['asset']} -> {paq['destino']}")
+
+
+def cargar_catalogo():
+    try:
+        with open(resource_path("catalogo_instaladores.json"), encoding="utf-8") as f:
+            return json.load(f)
+    except OSError:
+        return None
+
+
 def registrar_instalacion(nombre, resultado, ruta_log=None):
     """Escribir en instalaciones.log cada programa ejecutado con fecha y hora"""
     try:
@@ -182,8 +433,17 @@ class ProgramManager:
     def __init__(self, ruta_programas):
         self.ruta_programas = ruta_programas
         self._cache_rutas = {}
-        self.ruta_tpv = self.resolver_ruta(os.path.join("PuntodeVenta", "1.- Instalar"))
+        self.remoto = None      # Remoto (sin pendrive): baja lo que falte a C:\apps\Programas
+        self.avisar = None
         self.configurar_unrar()
+
+    @property
+    def ruta_tpv(self):
+        """Carpeta «PuntodeVenta\\1.- Instalar». Sin pendrive se calcula del catálogo sin descargar todo el TPV."""
+        ruta = self.resolver_ruta(os.path.join("PuntodeVenta", "1.- Instalar"), descargar=False)
+        if not os.path.exists(ruta) and self.remoto:
+            ruta = self.remoto.ruta_carpeta("PuntodeVenta/1.- Instalar") or ruta
+        return ruta
 
     # ===============================================
     # 📦 HERRAMIENTA PARA DESCOMPRIMIR .RAR
@@ -276,7 +536,7 @@ class ProgramManager:
     # primero en la raiz (compatibilidad con la estructura plana anterior) y
     # si no lo encuentran hacen una busqueda recursiva por nombre.
 
-    def resolver_ruta(self, nombre, carpeta_base=None):
+    def resolver_ruta(self, nombre, carpeta_base=None, descargar=True):
         """Devolver la ruta real de un archivo/carpeta dentro de la carpeta de programas.
 
         Acepta nombres simples ("AnyDesk.exe") o relativos ("office 19/OInstall.exe").
@@ -328,6 +588,13 @@ class ProgramManager:
             self._cache_rutas[clave] = encontrada
             return encontrada
 
+        # Sin pendrive: bajarlo del repositorio privado y volver a buscar
+        if descargar and self.remoto:
+            paquetes = self.remoto.coincidencias(nombre, base)
+            if paquetes:
+                self.remoto.asegurar(paquetes, self.avisar)
+                return self.resolver_ruta(nombre, carpeta_base, descargar=False)
+
         return ruta_plana
 
 
@@ -344,13 +611,18 @@ class ProgramManager:
     def abrir_archivo(self, nombre_archivo, admin=False, carpeta_base=None, consola=False):
         """Abrir archivo ejecutable"""
         try:
-            ruta_archivo = self.resolver_ruta(nombre_archivo, carpeta_base)
+            ruta_archivo = self.resolver_ruta(nombre_archivo, carpeta_base, descargar=False)
 
             if not os.path.exists(ruta_archivo):
-                # Sin pendrive: los gratuitos se bajan del sitio oficial del fabricante
-                descargado = descargar_oficial(nombre_archivo, getattr(self, "avisar", None))
+                # Sin pendrive: los gratuitos se bajan del sitio oficial; el resto del repositorio privado
+                descargado = descargar_oficial(nombre_archivo, self.avisar)
                 if descargado:
                     ruta_archivo = descargado
+                elif self.remoto:
+                    ruta_archivo = self.resolver_ruta(nombre_archivo, carpeta_base)
+                    if not os.path.exists(ruta_archivo):
+                        raise FileNotFoundError(f"Archivo {nombre_archivo} no encontrado. Este programa solo está "
+                                                "en el pendrive.")
                 elif not hay_pendrive():
                     raise FileNotFoundError(f"Archivo {nombre_archivo} no encontrado. Este programa solo está "
                                             "en el pendrive: abre el instalador desde ahí.")
@@ -945,7 +1217,7 @@ class ProgramManager:
     def abrir_fotos_microsoft(self):
         """✅NUEVO: Ejecutar instalador de Fotos de Microsoft"""
         print("📸 [DEBUG] Ejecutando instalador de Fotos de Microsoft...")
-        if not os.path.exists(self.resolver_ruta("Fotos de Microsoft Installer.exe")):
+        if not os.path.exists(self.resolver_ruta("Fotos de Microsoft Installer.exe", descargar=False)):
             # Sin pendrive: abrir la ficha de Fotos en Microsoft Store
             os.startfile("ms-windows-store://pdp/?productid=9WZDNCRFJBH4")
             return "Microsoft Store abierta en la aplicación Fotos"
@@ -1611,6 +1883,17 @@ EN_LINEA = {
     "defender_custom",
 }
 
+# Sin pendrive: botones que no se pueden descargar (activadores y licencias que no se publican)
+SOLO_PENDRIVE = {"office", "activar_windows_office", "winrar_crack"}
+
+# Sin pendrive: carpetas que un paso usa directo, sin buscarlas, y hay que bajar antes de ejecutarlo
+PRE_DESCARGA = {
+    "firewall_direct": [os.path.join("PuntodeVenta", "1.- Instalar", "5.- Reglas Firewall")],
+    "tpv_direct": [os.path.join("PuntodeVenta", "1.- Instalar", "6.- TPV")],
+    "actualizacion_direct": [os.path.join("PuntodeVenta", "1.- Instalar", "7.- Actualizacion")],
+    "impresoras_hp": ["Paquetes HP"],
+}
+
 CONFIRMAR = {
     "defender_custom": "Excluye la carpeta del programa de Windows Defender, deja el UAC en «No notificarme nunca» "
                        "y abre Defender para que apagues la protección en tiempo real.",
@@ -1814,19 +2097,21 @@ class Api(ApiBase):
         self._contador = 0
         self._lock = threading.Lock()
         self._local = threading.local()      # qué proceso corre en cada hilo (para avisar descargas)
-        ruta = os.path.join(carpeta_raiz_proyecto(), "Programas")
-        if os.path.isdir(ruta):
-            self._usar(ruta)
+        self._acceso = Acceso()
+        self._catalogo = cargar_catalogo()
+        if hay_pendrive():
+            self._usar(os.path.join(carpeta_raiz_proyecto(), "Programas"))
         else:
-            # Exe descargado desde la web: sin pendrive, solo los instaladores de internet
-            descargas = os.path.join(CARPETA_DATOS_WEB, "Descargas")
-            os.makedirs(descargas, exist_ok=True)
-            self._usar(descargas)
+            # Exe descargado desde la web: todo se baja a C:\apps\Programas
+            os.makedirs(CACHE_PROGRAMAS, exist_ok=True)
+            self._usar(CACHE_PROGRAMAS, remoto=True)
 
-    def _usar(self, ruta):
+    def _usar(self, ruta, remoto=False):
         print(f"📁 [DEBUG] Carpeta de programas: {ruta}")
         self._pm = ProgramManager(ruta)
         self._pm.avisar = self._avisar_hilo
+        if remoto and self._catalogo and self._acceso.disponible():
+            self._pm.remoto = Remoto(ruta, self._catalogo, self._acceso)
         self._acciones = mapa_acciones(self._pm)
 
     def _avisar_hilo(self, texto):
@@ -1848,9 +2133,15 @@ class Api(ApiBase):
             "ultima_tab": int(leer_config().get("last_tab", 0) or 0),
             "pc": os.environ.get("COMPUTERNAME", ""),
             "pendrive": self._pm is not None and os.path.normcase(self._pm.ruta_programas) != os.path.normcase(
-                os.path.join(CARPETA_DATOS_WEB, "Descargas")),
+                CACHE_PROGRAMAS),
+            "remoto": bool(self._pm and self._pm.remoto),
             "en_linea": sorted(EN_LINEA),
+            "solo_pendrive": sorted(SOLO_PENDRIVE),
         }
+
+    def desbloquear(self, clave):
+        """Clave de la web -> permiso para bajar instaladores (queda guardado en este PC)."""
+        return bool(clave) and self._acceso.desbloquear(clave)
 
     def guardar_tab(self, indice):
         guardar_config({"last_tab": int(indice)})
@@ -1897,6 +2188,10 @@ class Api(ApiBase):
         def correr():
             self._local.pid = pid
             try:
+                # Sin pendrive: carpetas que algunos pasos usan directo (sin buscarlas) se bajan antes
+                if self._pm.remoto:
+                    for rel in PRE_DESCARGA.get(fid, ()):
+                        self._pm.resolver_ruta(rel)
                 try:
                     acepta = "progreso" in inspect.signature(funcion).parameters
                 except (TypeError, ValueError):
@@ -1917,6 +2212,11 @@ class Api(ApiBase):
                                          "texto": "Cancelado" if cancelado else msg_fin(nombre, pestana, mensaje),
                                          "detalle": mensaje})
             except Exception as e:
+                if ClaveRequerida.MARCA in str(e):
+                    # La interfaz pide la clave y vuelve a ejecutar este botón
+                    self._push("onProceso", {"id": pid, "estado": "clave", "fid": fid,
+                                             "texto": "Se necesita la clave para descargar"})
+                    return
                 error = str(e)
                 print(f"❌[DEBUG] Error en proceso {nombre}: {error}")
                 registrar_instalacion(etiqueta_log, "ERROR - " + error[:80])
