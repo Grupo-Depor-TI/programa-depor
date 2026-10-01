@@ -1,6 +1,6 @@
 """
 Empaqueta la carpeta «Programas» del pendrive y la sube al Release «instaladores» del
-repositorio PRIVADO Grupo-Depor-TI/programa-depor-instaladores.
+repositorio PRIVADO depor-ti/programa-depor-instaladores.
 
 - Cada archivo suelto de una categoría va como un archivo.
 - Cada subcarpeta va como un .zip (el TPV, un .zip por paso).
@@ -21,7 +21,7 @@ import urllib.parse
 import urllib.request
 import zipfile
 
-OWNER, REPO, TAG = "Grupo-Depor-TI", "programa-depor-instaladores", "instaladores"
+OWNER, REPO, TAG = "depor-ti", "programa-depor-instaladores", "instaladores"
 EXCLUIR = {  # nunca se suben (rutas relativas a Programas, en minúsculas)
     "02 - office y activacion",                     # activadores de Windows/Office
     "09 - utilidades y limpieza/crack winrar",       # licencia pirata de WinRAR
