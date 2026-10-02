@@ -2234,9 +2234,10 @@ class Api(ApiBase):
 # ===============================================
 # ARRANQUE: permisos de administrador y WebView2
 # ===============================================
-def aviso_windows(titulo, texto, preguntar=False):
+def aviso_windows(titulo, texto, preguntar=False, info=False):
     """Cuadro de mensaje nativo (se usa antes de que exista la ventana). Devuelve True si se eligió «Sí»."""
-    estilo = (0x04 | 0x20) if preguntar else 0x10     # MB_YESNO|MB_ICONQUESTION  o  MB_ICONERROR
+    # MB_YESNO|MB_ICONQUESTION, MB_ICONINFORMATION o MB_ICONERROR
+    estilo = (0x04 | 0x20) if preguntar else (0x40 if info else 0x10)
     return ctypes.windll.user32.MessageBoxW(None, texto, titulo, estilo | 0x00010000) == 6
 
 
@@ -2300,40 +2301,66 @@ def webview2_instalado():
                     return True
         except OSError:
             continue
+    # Respaldo: la carpeta de instalación (a veces el registro queda incompleto)
+    for base in (os.environ.get("ProgramFiles(x86)"), os.environ.get("ProgramFiles")):
+        carpeta = os.path.join(base or "", "Microsoft", "EdgeWebView", "Application")
+        try:
+            if any(os.path.exists(os.path.join(carpeta, v, "msedgewebview2.exe")) for v in os.listdir(carpeta)):
+                return True
+        except OSError:
+            continue
     return False
 
 
+# Instalador oficial de Microsoft (2 MB): baja e instala WebView2. Necesita internet.
+WEBVIEW2_URL_ONLINE = "https://go.microsoft.com/fwlink/p/?LinkId=2124703"
+
+
+def _instalar_webview2(instalador):
+    try:
+        subprocess.run([instalador, "/silent", "/install"], timeout=1200, creationflags=subprocess.CREATE_NO_WINDOW)
+    except Exception as e:
+        print(f"⚠️ [WEBVIEW2] {e}")
+    return webview2_instalado()
+
+
 def asegurar_webview2():
-    """Si falta WebView2 se instala desde la carpeta Programas; si no está el instalador, se ofrece la versión clásica."""
+    """Si falta WebView2 (pasa en Windows 10, sobre todo LTSC) se instala antes de abrir la ventana:
+    primero con el instalador que haya en la carpeta Programas (sin internet) y si no, bajándolo de Microsoft."""
     if webview2_instalado():
         return True
     raiz = carpeta_raiz_proyecto()
-    instalador = None
-    for dirpath, _, archivos in os.walk(os.path.join(raiz, "Programas")):
-        for nombre in WEBVIEW2_INSTALADORES:
-            if nombre in archivos:
-                instalador = os.path.join(dirpath, nombre)
+    for carpeta in (os.path.join(raiz, "Programas"), CACHE_PROGRAMAS):
+        for dirpath, _, archivos in os.walk(carpeta):
+            nombre = next((n for n in WEBVIEW2_INSTALADORES if n in archivos), None)
+            if nombre:
+                aviso_windows("Programa Depor", "Este equipo no tiene Microsoft Edge WebView2, que necesita la interfaz.\n\n"
+                              "Se instalará ahora en silencio desde la carpeta Programas (1 o 2 minutos).\n"
+                              "Presiona Aceptar y espera: el programa se abrirá solo al terminar.", info=True)
+                if _instalar_webview2(os.path.join(dirpath, nombre)):
+                    return True
                 break
-        if instalador:
-            break
-    if instalador:
-        aviso_windows("Programa Depor", "Este equipo no tiene Microsoft Edge WebView2, que necesita la interfaz.\n\n"
-                      "Se instalará ahora en silencio (1 o 2 minutos). Presiona Aceptar para continuar.")
-        try:
-            subprocess.run([instalador, "/silent", "/install"], timeout=900)
-        except Exception as e:
-            print(f"⚠️ [WEBVIEW2] {e}")
-        if webview2_instalado():
+
+    # Sin instalador local: bajar el instalador oficial de Microsoft
+    aviso_windows("Programa Depor", "Este equipo no tiene Microsoft Edge WebView2, que necesita la interfaz.\n\n"
+                  "Se descargará de Microsoft y se instalará en silencio (unos minutos, según internet).\n"
+                  "Presiona Aceptar y espera: el programa se abrirá solo al terminar.", info=True)
+    destino = os.path.join(os.environ.get("TEMP", r"C:\Windows\Temp"), "MicrosoftEdgeWebview2Setup.exe")
+    try:
+        peticion = urllib.request.Request(WEBVIEW2_URL_ONLINE, headers={"User-Agent": "Mozilla/5.0 ProgramaDepor"})
+        with urllib.request.urlopen(peticion, timeout=60) as r, open(destino, "wb") as f:
+            shutil.copyfileobj(r, f)
+        if _instalar_webview2(destino):
             return True
-    clasico = os.path.join(raiz, "_Desarrollo", "Otros programas", "ProgramasV3_clasico.exe")
-    texto = ("Este equipo no tiene Microsoft Edge WebView2, que necesita la interfaz del programa.\n\n"
-             "Para instalarlo sin internet, deja «MicrosoftEdgeWebView2RuntimeInstallerX64.exe» dentro de la carpeta "
-             "Programas (por ejemplo en «08 - Configuracion Windows») y vuelve a abrir el programa.")
-    if os.path.exists(clasico):
-        if aviso_windows("Programa Depor", texto + "\n\n¿Abrir ahora la versión clásica del instalador?", preguntar=True):
-            subprocess.Popen([clasico])
-    else:
-        aviso_windows("Programa Depor", texto)
+        motivo = "La instalación no terminó bien."
+    except Exception as e:
+        motivo = f"No se pudo descargar ({e})."
+
+    aviso_windows("Programa Depor",
+                  f"No se pudo instalar Microsoft Edge WebView2. {motivo}\n\n"
+                  "Revisa la conexión a internet y vuelve a abrir el programa.\n\n"
+                  "Sin internet: deja «MicrosoftEdgeWebView2RuntimeInstallerX64.exe» dentro de la carpeta "
+                  "Programas (por ejemplo en «08 - Configuracion Windows») y vuelve a abrirlo.")
     return False
 
 
